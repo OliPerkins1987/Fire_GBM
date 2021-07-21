@@ -9,6 +9,9 @@ require(rpart)
 
 #####################################################################
 
+### This function produces k tree structures for a given data set
+### In analysis, the tree structures were pruned using a value taken from an initial variable selection
+
 
 boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, tree.method = 'class', 
                          k = 10000, nsplits = 1, min_node, tree.prune = 5) {
@@ -56,6 +59,9 @@ boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, t
 ### 2) aggregate bootstrapped trees
 
 ##########################################################
+
+### This function returns the number of trees that had a given variable as the node at a given point in the tree
+### It is used to find the most frequently occuring tree structure in a set of bootstrapped trees
 
 aggregate.boot_tree <- function(splits, nsplits) {
   
@@ -134,6 +140,8 @@ select.boot_tree <- function(splits, key) {
 
 ################################################################
 
+### Pulls the values of the thresholds used to split a tree from a list of bootstrapped structures
+
 get.split_vals <- function(splits, node_n, var_name) {
   
   res <- lapply(splits, function(x) {
@@ -161,6 +169,8 @@ get.split_vals <- function(splits, node_n, var_name) {
 
 ################################
 
+### extracts output probabilities from a list of boostrapped trees
+
 get.leaf_probs <- function(split.list, leaf_n) {
   
   res <- lapply(split.list, function(x) {
@@ -178,6 +188,12 @@ get.leaf_probs <- function(split.list, leaf_n) {
 ### 4) Predict from bootstrapped tree frame
 
 ####################################################################
+
+### Assuming a constant structure, and a series of k threshold & associated output probability sets
+### this function allows updating of the tree structure with a new set of thresholds / output probs
+
+### how arguments: Median takes the median thresholds / probs, random makes a random draw, whilst sequential takes an integer input to draw from the thresholds/probs
+### this can then be used as an iterator in a loop or other function
 
 make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequential'),
                             split.key, thresholds, probs, sequential.key = NULL) {
@@ -260,6 +276,9 @@ make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequenti
 
 ################################################################################
 
+### Given a known tree structure and a new set of data, this function will relearn the threshold values and output probabilities 
+### Optimisation is done using the gini impurity coefficient as a measure
+    
 Relearn.tree_par <- function(target, variable, threshold.type = 'Lower', weights) {
   
   treesplit <- function(thresh, tar, var, how, wts) {
@@ -295,6 +314,9 @@ Relearn.tree_par <- function(target, variable, threshold.type = 'Lower', weights
 
 #######################################################################
 
+### Utility function
+### Calculates a wide range of model metrics for a single tree with two sets of parameter values
+    
 Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2, 
                          dat = Combo.dat, bootstrap_dat = dat.samps, 
                          bootstrap = T, target = 'Fire_development_stage') {
@@ -391,6 +413,8 @@ Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2,
 
 #####################################################################################
 
+### From a single tree structure & two sets of parameter values (thresholds & probs)
+### This function will produce out prediction maps from the tree across all parameter sets
 
 Compile.map <- function() {
 
