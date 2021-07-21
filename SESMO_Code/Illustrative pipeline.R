@@ -14,6 +14,7 @@ library(caret)
 library(raster)
 library(rgdal)
 library(ncdf4)
+library(devtools)
 
 set.seed(1987)
 
@@ -23,13 +24,17 @@ set.seed(1987)
 
 ###############################
 
-load(url("https://github.com/OliPerkins1987/Fire_GBM/blob/main/SESMO_Code/AFT_Distribution_Data_15052021.RData?raw=true"))
+load(url("https://github.com/OliPerkins1987/Fire_GBM/blob/main/Data/AFT_Distribution_Data_15052021.RData?raw=true"))
+source_url("https://raw.githubusercontent.com/OliPerkins1987/Fire_GBM/main/Underlying_functions/AFT_Distribution_Functions.R")
+
 
 #############################################################
 
 ### Combine data for modelling
 
 #############################################################
+
+### This combines spatial information from DAFI with associated Land use and secondary data sampled at those points
 
 Landuse.dat    <- merge(DAFI[, c(1, 4)], Landuse, 
                       by.x = 'Case.Study.ID', by.y = 'Case Study ID', all.x = T)[, -c(2, 20)]
@@ -41,12 +46,14 @@ Combo.dat                  <- merge(Combo.dat, Synthetic.DAFI, by = 'Case.Study.
 Combo.dat$Market_influence <- Combo.dat$Market_access*Combo.dat$GDP 
 
 
+### Tidy data - remove unused variables and missing values
 Combo.dat      <- Combo.dat[complete.cases(Combo.dat[, c(3:13, 42, 53:55)]), -c(43:51)] ## col 41 is cropland weight
 Combo.dat      <- Combo.dat[!is.na(Combo.dat$Cropland_weights) & !is.na(Combo.dat$Fire_development_stage), ]
 
-### Add variable(s) that work for prediction
+### Add convlution variable(s) for prediction
 
 Combo.dat$HDI_GDP <- Combo.dat$HDI*log(Combo.dat$GDP)
+
 
 #############################################################
 
@@ -77,6 +84,8 @@ Test.dat  <- rbind(NULL.mod[-c(NULL.train.rows), ],
 #############################################################
 
 ### 2a) Initial trees to ID candidate variables
+### We grow a large tree using all candidate predictors
+### Then prune this to identify a plausible set
 
 stage.tree      <- rpart(Fire_development_stage ~ ., 
                         data = Train.dat[, c(3:9, 43:47)], 
@@ -108,6 +117,9 @@ Metrics::auc(as.numeric(Test.dat$Fire_development_stage)-1, predict(stage.tree2,
 
 ### 2b) Boostrapped tree structures
 
+### Based on the variable selection excercise above, we now search for the most resilient tree structure
+### This is done through bootstrapping
+
 ##############################################
 
 split.list       <- boot.tree(Train.dat, 
@@ -117,16 +129,22 @@ split.list       <- boot.tree(Train.dat,
                               k = 1000, min_node = min(stage.tree2$frame$n), 
                                tree.prune = 3) ## prune val from stage 1
 
+### Identify splits in bootstrapped tree structures
 splits           <- aggregate.boot_tree(split.list, 15)
 n.nodes          <- summary(unlist(lapply(split.list, function(x) {length(which(x$frame$var != '<leaf>'))})))
 
-### choose trees
+### choose trees based on frequency of splits
 split.key        <- list('1' = 'Market_influence', '2' = 'HDI')
 test.list        <- select.boot_tree(split.list, split.key)
 split.list       <- test.list
 remove(test.list)
 
-### get tree components
+##################################
+
+### Extract threshold values and output probabilities from bootstrapped trees
+
+##################################
+
 splits           <- aggregate.boot_tree(split.list, 7)
 splits           <- splits[sapply(splits, sum) == length(split.list)]
 names(splits)    <- rownames(split.list[[1]]$frame)
@@ -176,7 +194,7 @@ caret::confusionMatrix(factor(overall.pred), factor(Test.dat$Fire_development_st
 
 ################################################################################
 
-### 3) Reweight thresholds and probabilities based on upsampling to match reference set
+### 4) Reweight thresholds and probabilities based on upsampling to match reference set
 
 ################################################################################
 
@@ -260,7 +278,7 @@ names(weighted.probs) <- names(probs)
 
 #################################################
 
-### 4) Performance of updated model
+### 5) Performance of updated model
 
 #################################################
 
@@ -275,21 +293,19 @@ Metrics     <- Assess.model(bootstrap = T)
 
 #########################################################
 
-### As a map
+### 6) As a map
 
 #########################################################
 
 preds.frame           <- data.frame(HDI[[1]][], (MA.Synthetic[[1]] * GDP[[1]])[])
 colnames(preds.frame) <- c('HDI', 'Market_influence')
 
-
-###########################################################
-
-### Plot maps
-
-###########################################################
+### Compile & plot map
 
 combined.rast <- Compile.map()
 
 plot(calc(brick(unlist(combined.rast$Combined)), mean) * (JULES.mask > 0.05) * (JULES.icemask < 0.95))
+
+
+
 
