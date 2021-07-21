@@ -14,8 +14,18 @@ require(rpart)
 
 
 boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, tree.method = 'class', 
-                         k = 10000, nsplits = 1, min_node, tree.prune = 5) {
+                         k = 10000, min_node, tree.prune = 5) {
 
+  ### !!! function arguments
+  ### dat = data to learn tree structure
+  ### dat.weights - does that data have an associated set of weights?
+  ### weights - the weights to be supplied to the tree learning algorithm
+  ### form - a character string of the type ('target', 'predictor_1', 'predictor_2', etc) that will be translated into a formula object
+  ### var.cols - integer providing index of variable columns to use (for speed & memory)
+  ### k = number of bootstrap iterations
+  ### min_node - the smallest number of data points allowed at any terminal leaf
+  ### tree.prune - the size to prune the tree back to during cross-validation
+  
   split.list <- list()
   
   if(dat.weights == TRUE) {
@@ -65,6 +75,11 @@ boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, t
 
 aggregate.boot_tree <- function(splits, nsplits) {
   
+  ### !!! function arguments
+  ### splits - the output of boot.tree
+  ### nsplits - the depth of tree splits to be considered in the resulting list
+  
+  
   res <- list()
   
   for(i in 1:nsplits) {
@@ -92,6 +107,10 @@ aggregate.boot_tree <- function(splits, nsplits) {
 #########################################
 
 select.boot_tree <- function(splits, key) {
+  
+  ### !!! function arguments
+  ### splits - the output of boot.tree
+  ### key - a named list of the form ('1' = 'var-name', '2' = 'var-name'... etc)
   
   for(i in 1:length(splits)) {
 
@@ -144,6 +163,11 @@ select.boot_tree <- function(splits, key) {
 
 get.split_vals <- function(splits, node_n, var_name) {
   
+  ### !!! function arguments
+  ### splits - the output of boot.tree
+  ### node_n & var_name should be two strings comprised of a key-value pair from the key used in select.boot_tree
+  
+  
   res <- lapply(splits, function(x) {
     
     try({
@@ -173,6 +197,11 @@ get.split_vals <- function(splits, node_n, var_name) {
 
 get.leaf_probs <- function(split.list, leaf_n) {
   
+  ### !!! function arguments
+  ### split.list - the output of boot.tree
+  ### leaf_n - integer giving the location of the leaf in the tree structure
+  
+  
   res <- lapply(split.list, function(x) {
 
         x$frame$yprob[which(names(splits)[leaf_n] == row.names(x$frame)), ]
@@ -192,12 +221,19 @@ get.leaf_probs <- function(split.list, leaf_n) {
 ### Assuming a constant structure, and a series of k threshold & associated output probability sets
 ### this function allows updating of the tree structure with a new set of thresholds / output probs
 
-### how arguments: Median takes the median thresholds / probs, random makes a random draw, whilst sequential takes an integer input to draw from the thresholds/probs
-### this can then be used as an iterator in a loop or other function
 
 make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequential'),
                             split.key, thresholds, probs, sequential.key = NULL) {
 
+  
+  ### !!! function arguments
+  ### tree.template - a dataframe of the type my_tree$frame
+  ### split.key - named list used in select.boot_tree
+  ### thresholds - a list of thresholds from get.split_vals
+  ### probs - a list of output probabilities from get.leaf_probs
+  ### how arguments: Median takes the median thresholds / probs, random makes a random draw, 
+  ### Sequential takes an integer input (sequential.key) to draw from the thresholds/probs- this can then be used as an iterator in a loop or other function
+  
   ft <- tree.template
 
   if(how == 'Random') {
@@ -279,7 +315,13 @@ make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequenti
 ### Given a known tree structure and a new set of data, this function will relearn the threshold values and output probabilities 
 ### Optimisation is done using the gini impurity coefficient as a measure
     
-Relearn.tree_par <- function(target, variable, threshold.type = 'Lower', weights) {
+Relearn.tree_par <- function(target, variable, weights, threshold.type = 'Lower') {
+  
+  ### !!! function arguments
+  ### target - a factor providing the variable to predict
+  ### variable - a numeric or factor used to split the tree at this node
+  ### weights - a vector of weights to use to inform tree splitting
+
   
   treesplit <- function(thresh, tar, var, how, wts) {
     
@@ -418,6 +460,8 @@ Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2,
 
 Compile.map <- function() {
 
+  ### uses variables assigned in the global environment in the underlying pipeline
+  
  
 boot.rast           <- list()
 boot.rast_reference <- list()
