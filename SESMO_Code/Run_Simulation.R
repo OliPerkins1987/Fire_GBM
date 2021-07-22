@@ -27,18 +27,6 @@ Compete.AFT <- function(AFT.list, threshold = 0.1) {
 ##########################################################################
 
 
-Compete.AFT <- function(AFT.list, threshold = 0.1) {
-  
-  AFT.list   <- lapply(AFT.list, function(x) {x[x[] < threshold] <- 0
-  return(x)})
-  AFT.ref    <- sum(unlist(brick(AFT.list)))
-  AFT.compete<- lapply(AFT.list, function(x) x/AFT.ref)
-  
-  AFT.compete
-}
-
-
-
 Years <- 1990:2015
 
 for(Year in 1:length(Years)) {
