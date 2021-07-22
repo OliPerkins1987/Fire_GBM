@@ -11,12 +11,9 @@ library(tidyverse)
 library(ggplot2)
 library(raster)
 library(viridisLite)
-library(plotly)
 library(maptools)
-library(rgdal)
 
-continents   <- readOGR('C:/Users/Oli/Documents/PhD/Model development/Data/Secondary data/Socio economic/Country boundaries/World_Continents')
-continents   <- continents[continents@data$CONTINENT != 'Antarctica', ]
+load(url("https://github.com/OliPerkins1987/Fire_GBM/blob/main/Data/Plot_data.RData?raw=true"))
 
 
 ########################################################
