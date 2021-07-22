@@ -4,7 +4,7 @@ library(raster)
 library(tidyverse)
 library(devtools)
 
-source_url('https://github.com/OliPerkins1987/Fire_GBM/blob/main/SESMO_Code/AFR_Competition_Simulation_v2.RData')
+load(url('https://github.com/OliPerkins1987/Fire_GBM/blob/main/Data/AFR_Competition_Simulation_v2.RData?raw=true'))
 
 
 Compete.AFT <- function(AFT.list, threshold = 0.1) {
