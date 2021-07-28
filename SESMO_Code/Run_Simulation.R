@@ -1,5 +1,13 @@
 
 
+################################################################################################
+
+### Code by Oli Perkins April 2021
+### This code draws on Classification Tree files to produce a set of global maps of AFR distributions
+### !NB working directories (lines 134, 138, 142) will need to be set appropriately to write out files
+
+########################################################################################################
+
 library(raster)
 library(tidyverse)
 library(devtools)
