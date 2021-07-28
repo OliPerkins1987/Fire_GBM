@@ -1,7 +1,9 @@
 
+###########################################################################################################
 ### Code by Oli Perkins April 2021
-### Code makes decision tree models of a given target AFR 
-### It outputs maps of that AFR's competitiveness globally
+### Code makes decision tree models of a given target AFR/LFS
+### It outputs maps of that LFS's competitiveness globally
+###########################################################################################################
 
 library(tidyverse)
 library(ggplot2)
