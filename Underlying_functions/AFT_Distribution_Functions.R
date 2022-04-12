@@ -1,5 +1,11 @@
 
 
+######################################################################
+
+### The following code provides a suite of functions to drive an AFT distribution
+### based on decision tree sub-models
+
+require(tidyverse)
 require(rpart)
 
 
@@ -9,22 +15,27 @@ require(rpart)
 
 #####################################################################
 
-### This function produces k tree structures for a given data set
-### In analysis, the tree structures were pruned using a value taken from an initial variable selection
-
+### This function takes an underlying data set, and creates a tree on bootstrapped resamples of it
+### It can also optionally prunes the tree to prevent overfitting
 
 boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, tree.method = 'class', 
-                         k = 10000, min_node, tree.prune = 5) {
+                         k = 10000, min_node, Prune = T, tree.prune = 5) {
 
-  ### !!! function arguments
-  ### dat = data to learn tree structure
-  ### dat.weights - does that data have an associated set of weights?
-  ### weights - the weights to be supplied to the tree learning algorithm
-  ### form - a character string of the type ('target', 'predictor_1', 'predictor_2', etc) that will be translated into a formula object
-  ### var.cols - integer providing index of variable columns to use (for speed & memory)
-  ### k = number of bootstrap iterations
-  ### min_node - the smallest number of data points allowed at any terminal leaf
-  ### tree.prune - the size to prune the tree back to during cross-validation
+  ### !!! Function arguments
+  
+  ### dat: the underlying data set of dataframe type
+  ### dat.weights - Boolean, should weights be included during the bootstrap resampling process?
+  ### weights - a vector of weights to be used during bootstrap resampling
+  ### form - a character vector that is coerced to a formula; the first item should be the target variable, 
+  ###         the remaining items should be predictor variables to be used
+  ### var.cols - a vector specifying which columns from the dataframe should be used for modelling
+  ### tree.method - 'class' specifies a classification tree, currently only classification trees are supported
+  ### k - the number of bootstrap replicates to use
+  ### min_node - an integer to specify the smallest number of data points that can be assigned to a terminal leaf
+  ### Prune    - a boolean specifying if pruning should be conducted
+  ### tree.prune - an integer specifying how many nodes the tree should be pruned down to
+  
+  ### returns: a list of decision tree models
   
   split.list <- list()
   
@@ -50,11 +61,23 @@ boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, t
 
         f <- formula(paste0(form[1], ' ~ ', paste(form[2:length(form)], collapse = ' + ')))
         
-        split.list[[j]] <- tree(f, control = tree.control(nrow(boot.dat), mincut = min_node),
+        split.list[[j]] <- tree::tree(f, control = tree.control(nrow(boot.dat), mincut = min_node),
                                       data = boot.dat[, var.cols])
         
+        if(Prune == TRUE) {
+        
+          if(tree.method == 'class') {
+          
         split.list[[j]] <- prune.misclass(split.list[[j]], best = tree.prune)
 
+          } else if(tree.method == 'regression') {
+            
+        split.list[[j]] <- prune.tree(split.list[[j]], best = tree.prune)
+            
+          }
+        
+        }
+        
     }
 
     return(split.list)
@@ -63,21 +86,21 @@ boot.tree    <- function(dat, dat.weights = T, weights = NULL, form, var.cols, t
   }
 
 
-
 ##########################################################
 
 ### 2) aggregate bootstrapped trees
 
 ##########################################################
 
-### This function returns the number of trees that had a given variable as the node at a given point in the tree
-### It is used to find the most frequently occuring tree structure in a set of bootstrapped trees
+### Building on the intial function, this extracts a list describing the frequency of splits at different nodes
+### across all of the bootstrapped trees.
 
 aggregate.boot_tree <- function(splits, nsplits) {
   
-  ### !!! function arguments
+  ###!!! Function arguments
+  
   ### splits - the output of boot.tree
-  ### nsplits - the depth of tree splits to be considered in the resulting list
+  ### nsplits- the number of nodes to take into consideration
   
   
   res <- list()
@@ -108,9 +131,13 @@ aggregate.boot_tree <- function(splits, nsplits) {
 
 select.boot_tree <- function(splits, key) {
   
-  ### !!! function arguments
+  ### This extracts trees with a given structure from the bootstrapped list
+  
+  ### !!! Function arguments
   ### splits - the output of boot.tree
-  ### key - a named list of the form ('1' = 'var-name', '2' = 'var-name'... etc)
+  ### key    - a named list of the form: 
+  ###           ('node number' = 'variable name', etc)
+  ###          NB: only exact matches will be selected from the bootstrapped list
   
   for(i in 1:length(splits)) {
 
@@ -159,22 +186,19 @@ select.boot_tree <- function(splits, key) {
 
 ################################################################
 
-### Pulls the values of the thresholds used to split a tree from a list of bootstrapped structures
-
 get.split_vals <- function(splits, node_n, var_name) {
   
-  ### !!! function arguments
-  ### splits - the output of boot.tree
-  ### node_n & var_name should be two strings comprised of a key-value pair from the key used in select.boot_tree
+  ### obtains threshold values used to split the tree from the tree list produced by boot.tree
   
+  ### !!! Function arguments
+  ### node_n and varname are the key value pairs from the named list used to filter the output of boot.tree
+  ### at the preivous step
   
   res <- lapply(splits, function(x) {
     
     try({
       
       if(x$frame$var[row.names(x$frame) == as.character(node_n)] == var_name) {
-        
-        ### could we make it work for other values?
         
         as.numeric(substr(as.character(x$frame$splits[which(row.names(x$frame) == as.character(node_n)), 1]), 2, 
             nchar(as.character(x$frame$splits[which(row.names(x$frame) == as.character(node_n)), 1]))))
@@ -193,14 +217,12 @@ get.split_vals <- function(splits, node_n, var_name) {
 
 ################################
 
-### extracts output probabilities from a list of boostrapped trees
-
 get.leaf_probs <- function(split.list, leaf_n) {
   
-  ### !!! function arguments
-  ### split.list - the output of boot.tree
-  ### leaf_n - integer giving the location of the leaf in the tree structure
+  ### obtains threshold values used to split the tree from the tree list produced by boot.tree
   
+  ### !!! Function arguments
+  ### leaf_n - the number of the leaf in the decision tree frame object
   
   res <- lapply(split.list, function(x) {
 
@@ -210,6 +232,24 @@ get.leaf_probs <- function(split.list, leaf_n) {
   
 }
 
+### for regression trees
+
+get.leaf_vals <- function(split.list, leaf_n) {
+  
+  ### obtains threshold values used to split the tree from the tree list produced by boot.tree
+  
+  ### !!! Function arguments
+  ### leaf_n - the number of the leaf in the decision tree frame object
+  
+  res <- lapply(split.list, function(x) {
+    
+    x$frame$yval[which(names(splits)[leaf_n] == row.names(x$frame))]
+    
+  })
+  
+}
+
+
 
 
 ####################################################################
@@ -218,21 +258,22 @@ get.leaf_probs <- function(split.list, leaf_n) {
 
 ####################################################################
 
-### Assuming a constant structure, and a series of k threshold & associated output probability sets
-### this function allows updating of the tree structure with a new set of thresholds / output probs
-
-
 make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequential'),
-                            split.key, thresholds, probs, sequential.key = NULL) {
+                            split.key, thresholds, probs, sequential.key = NULL, 
+                            Regression = F) {
 
+  ### Creates a final decision tree structure from the bootstrapped list
   
-  ### !!! function arguments
-  ### tree.template - a dataframe of the type my_tree$frame
-  ### split.key - named list used in select.boot_tree
-  ### thresholds - a list of thresholds from get.split_vals
-  ### probs - a list of output probabilities from get.leaf_probs
-  ### how arguments: Median takes the median thresholds / probs, random makes a random draw, 
-  ### Sequential takes an integer input (sequential.key) to draw from the thresholds/probs- this can then be used as an iterator in a loop or other function
+  ### !! Function arguments
+  ### how - specifies the way in which the final tree is made:
+  ###         * 'Median' uses the median value of the distribution of each threshold splits
+  ###         * 'Random' takes a random draw for each threshold splits
+  ###         * 'Sequential' takes an integer value (sequential.key) to allow all thresholds to be sampled systematically
+  ### split.key - the named list used to split the output of boot.tree
+  ### thresholds - the output of get.split_vals
+  ### probs      - the output of get.leaf_probs
+  ### sequential.key - see how = 'Sequential'
+  
   
   ft <- tree.template
 
@@ -292,8 +333,15 @@ make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequenti
       
     } else if(how == 'Sequential') {
           
+      if(Regression == T) {
+        
+      ft$frame$yval[i] <- as.numeric(probs[[probs.val]][sequential.key])
+        
+      } else {
       
       ft$frame$yprob[i, ] <- as.numeric(probs[[probs.val]][sequential.key, ])
+      
+      }
       
         }
     
@@ -312,16 +360,24 @@ make.final_tree <- function(tree.template, how = c('Median', 'Random', 'Sequenti
 
 ################################################################################
 
-### Given a known tree structure and a new set of data, this function will relearn the threshold values and output probabilities 
-### Optimisation is done using the gini impurity coefficient as a measure
-    
-Relearn.tree_par <- function(target, variable, weights, threshold.type = 'Lower') {
+Relearn.tree_par <- function(target, variable, threshold.type = 'Lower', weights) {
   
-  ### !!! function arguments
-  ### target - a factor providing the variable to predict
-  ### variable - a numeric or factor used to split the tree at this node
-  ### weights - a vector of weights to use to inform tree splitting
-
+  ### This function takes a fixed decision tree structure and relearns the optimum split threshold for one of its nodes
+  ### This is done using the optimise base R function
+  ### It is only currently implemented for a categorical outcome and a numeric predictor, 
+  ###   though an ordered factor (ordinal variable) may be included as an integer vector
+  
+  
+  ### !!! Function arguments
+  ### target - factor giving the variable on which the tree split should be based
+  ### variable - numeric giving the potential values on which to split the tree
+  ### threshold.type - one of 'Upper' or 'Lower; is the target variable lower / higher 
+  ###    than the numeric threshold in the tree structure
+  ### weights - should a weights vector be used in calculating the split value?
+  
+  ### Known issue: if you supply a numeric vector as a predictor in which min = max, or which has no meaningful 
+  ### relationship with the target, the optimise algorithm may fail.
+  
   
   treesplit <- function(thresh, tar, var, how, wts) {
     
@@ -356,12 +412,23 @@ Relearn.tree_par <- function(target, variable, weights, threshold.type = 'Lower'
 
 #######################################################################
 
-### Utility function
-### Calculates a wide range of model metrics for a single tree with two sets of parameter values
-    
 Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2, 
                          dat = Combo.dat, bootstrap_dat = dat.samps, 
-                         bootstrap = T, target = 'Fire_development_stage') {
+                         bootstrap = T, target = 'AFR', 
+                         overall_target = 'AFR') {
+  
+  
+  ### Function groups together a range of procedures to evalute models learned 
+  ###   on different sets / weights of the same data
+  
+  ### !!! Function arguments
+  ### niche_mod, reference_mod decision trees of class 'tree' to be evaluated
+  ### dat, the data on which to evaluate them
+  ### bootstrap_dat, a list of integer vectors which describe the bootstrap samples to be taken
+  ### bootstrap - boolean describing of bootstrapping should be used to calculate metrics across
+  ###   multiple data fols
+  ### target - character giving name of target variable
+  
   
   results          <- list()
   results$All_data <- list('AUC' = list(), 'Class_Prediction' = list())
@@ -390,7 +457,7 @@ Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2,
                                     apply(Combined.preds, 1, mean))
   
   overall.pred <- apply(Combined.preds, 1, mean) >= 0.5
-  results$All_data$Class_Prediction$Combined <- caret::confusionMatrix(factor(overall.pred), factor(dat[[target]]))$overall[1:2]
+  results$All_data$Class_Prediction$Combined <- caret::confusionMatrix(factor(overall.pred), factor(dat[[overall_target]]))$overall[1:2]
   
   
   
@@ -423,12 +490,12 @@ Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2,
                       predict(reference_mod, bootstrap_dat[[i]], type = 'vector')[, 2])
   
   
-  results$Bootstrap$AUC$Combined[[i]]    <- ModelMetrics::auc(as.numeric(bootstrap_dat[[i]][[target]])-1, 
+  results$Bootstrap$AUC$Combined[[i]]    <- ModelMetrics::auc(as.numeric(bootstrap_dat[[i]][[overall_target]])-1, 
                                             apply(Combined.preds, 1, mean))
   
   overall.pred                          <- apply(Combined.preds, 1, mean) >= 0.5
-  results$Bootstrap$Kappa$Combined[[i]] <- caret::confusionMatrix(factor(overall.pred), factor(bootstrap_dat[[i]][[target]]))$overall[2]
-  results$Bootstrap$Accuracy$Combined[[i]] <- caret::confusionMatrix(factor(overall.pred), factor(bootstrap_dat[[i]][[target]]))$overall[1]
+  results$Bootstrap$Kappa$Combined[[i]] <- caret::confusionMatrix(factor(overall.pred), factor(bootstrap_dat[[i]][[overall_target]]))$overall[2]
+  results$Bootstrap$Accuracy$Combined[[i]] <- caret::confusionMatrix(factor(overall.pred), factor(bootstrap_dat[[i]][[overall_target]]))$overall[1]
   
   
   }
@@ -455,12 +522,16 @@ Assess.model <- function(niche_mod = Final.tree, reference_mod = Final.tree2,
 
 #####################################################################################
 
-### From a single tree structure & two sets of parameter values (thresholds & probs)
-### This function will produce out prediction maps from the tree across all parameter sets
 
-Compile.map <- function() {
+Compile.map <- function(which.prob = 2) {
 
-  ### uses variables assigned in the global environment in the underlying pipeline
+  ### Takes 1 tree structure, and two sets of thresholds and probabilities
+  ### outputs two sets of maps based on these, as well as their mean
+  ### These are named as in the illustrative pipeline script
+  
+  ### Function arguments
+  ### which.prob refers to the column of the decision tree output to be selected (2 for TRUE / Presence)
+  ### for multinomial predictors this can be changed to ID the relevant category of the target. 
   
  
 boot.rast           <- list()
@@ -477,7 +548,7 @@ for(i in 1:length(split.list)) {
   preds.vals      <- predict(Final.tree, preds.frame)
   boot.rast[[i]]  <- JULES.mask
   
-  values(boot.rast[[i]]) <- as.numeric(data.frame(preds.vals)[, 2])
+  values(boot.rast[[i]]) <- as.numeric(data.frame(preds.vals)[, which.prob])
   
   
   ### reference
@@ -488,7 +559,7 @@ for(i in 1:length(split.list)) {
   preds.vals      <- predict(Final.tree, preds.frame)
   
   boot.rast_reference[[i]]         <- JULES.mask
-  values(boot.rast_reference[[i]]) <- as.numeric(data.frame(preds.vals)[, 2])
+  values(boot.rast_reference[[i]]) <- as.numeric(data.frame(preds.vals)[, which.prob])
 
   ### Combined
   
@@ -504,5 +575,224 @@ return(list('Niche' = boot.rast, 'Reference' = boot.rast_reference,
 }
 
 
+#################################################################################
+
+### Functions to make sample weights
+
+##################################################################################
 
 
+###############################################################
+
+### 1) Load JULES
+
+###############################################################
+
+require(ncdf4)
+
+load.Jules <- function(path, filename) {
+  
+  JULES.lc<- nc_open(paste0(path, filename))
+  
+  lon     <- ncvar_get(JULES.lc, "longitude")
+  lat     <- ncvar_get(JULES.lc, "latitude", verbose = F)
+  vars    <- ncvar_get(JULES.lc, "pseudo")
+  
+  
+  #######################
+  
+  ### get data
+  
+  #######################
+  
+  setwd(path)
+  
+  r.temp       <- ncvar_get(JULES.lc, "field1391")
+  r.temp       <- aperm(r.temp, c(2, 1, 3))
+  r.temp       <- lapply(1:27, function(i) r.temp[, c(97:192, 1:96), i])
+  r.temp       <- lapply(r.temp, function(x) {raster(x)})
+  
+  
+  for(r in 1:length(r.temp)) {
+    
+    extent(r.temp[[r]]) <- c(-180, 180, -90, 90)
+    
+  }
+  
+  r.temp       <- lapply(r.temp, function(x) {flip(x, direction = 'y')})
+  r.temp       <- r.temp[1:27]
+  
+  names(r.temp)<- c('tropical broadleaf evergreen', 
+                    'temperate broadleaf evergreen', 
+                    'broadleaf deciduous', 
+                    'needleleaf evergreen', 
+                    'needleleaf deciduous', 
+                    'C3 grass', 'C3 crop','C3 pasture',
+                    'C4 grass', 'C4 crop', 'C4 pasture',
+                    'evergreen shrubs', 'deciduous shrubs', 
+                    'urban', 'lake', 'bare soil', 'ice', letters[1:10])
+  
+  return(r.temp)
+  
+}
+
+
+########################################################################################
+
+### 2) Make sampling thresholds
+
+########################################################################################
+
+Make.sampling_thresholds <- function(vars = list('HDI' = NULL, 
+                                                 'Pop_dense' = NULL, 'ETo' = NULL)) {
+  
+  vars.sum      <- lapply(vars, summary)
+  
+  Var.threshold <- data.frame(row.names = c('Min', 'LQ', 'Median', 'Mean', 'UQ', 'Max'))
+  
+  for(i in 1:length(vars.sum)) {
+    
+    Var.threshold[names(vars.sum)[i]] <- as.numeric(vars.sum[[i]])[1:6]
+    
+  }
+  
+  return(Var.threshold[c(2, 3, 4), ]) ## return only quartiles
+  
+}
+
+###########################################################
+
+### 3) Make DAFI thresholds
+
+###########################################################
+
+
+Make.DAFIweights <- function(dat, key, thresholds, trim.thresholds = NULL) {
+  
+  ### DAT should be case study ID, followed by variable columns
+  
+  dat             <- dat[key, ]
+  
+  ### Assign quartile
+  
+  for(i in 1:ncol(dat)) {
+    
+    col               <- dat[, i]
+    
+    dat[, i] <- ifelse(round(col, 3) <= Var.threshold[1, i], 1, 
+                       ifelse(round(col, 3) <= Var.threshold[2, i], 2, 
+                              ifelse(round(col, 3) <= Var.threshold[3, i], 3, 4)))
+    
+  }
+  
+  ### Assign weight based on over / under sampling
+  
+  dat <- apply(dat, 2, function(x) {
+    
+    (length(x) / 4) / table(x)
+    
+  })
+  
+  if(any(unlist(apply(dat, 2, length)) != 4)) {
+    
+    stop('One or more quartiles did not overlap the reference data.')
+    
+  }
+  
+  if(!is.null(trim.thresholds)) {
+    
+    dat <- apply(dat, 2, function(x) {
+      
+      ifelse(x < trim.thresholds[1], trim.thresholds[1], 
+             ifelse(x > trim.thresholds[2], trim.thresholds[2], 
+                    x))
+      
+    })
+    
+  }
+  
+  row.names(dat) <- c('LQ', 'LMQ', 'UMQ', 'UQ')
+  return(data.frame(dat))
+  
+}
+
+
+###########################################################################
+
+### 4) Prepare weighted sample
+
+###########################################################################
+
+
+Prepare.weighted_sample    <- function(dat, thresholds, DAFI.weights, trim.thresholds = c(0.3, 3),
+                                       var.names = c('HDI', 'Pop_dense', 'ET')) {
+  
+  ### NB column 1 should be Case Study ID (unique ID)
+  
+  
+  ### assign quartile of global distribution
+  
+  for(i in 2:ncol(dat)) {
+    
+    col               <- dat[, i]
+    
+    dat[, i]          <- ifelse(round(col, 3) <= thresholds[1, i-1], 1, 
+                                ifelse(round(col, 3) <= thresholds[2, i-1], 2, 
+                                       ifelse(round(col, 3) <= thresholds[3, i-1], 3, 4)))
+    
+  }
+  
+  
+  ### extract weights
+  
+  for(j in 1:nrow(dat)) {
+    
+    for(k in 1:length(var.names)) {
+      
+      dat[[var.names[k]]][j] <- DAFI.weights[[var.names[k]]][dat[[var.names[k]]][j]]
+      
+    }
+    
+  }
+  
+  ### Multiply and trim
+  
+  dat$weight <- apply(dat[, 2:ncol(dat)], 1, function(x) {prod(x, na.rm = T)})
+  
+  if(!is.null(trim.thresholds)) {
+    
+    dat$weight <- ifelse(dat$weight < trim.thresholds[1], trim.thresholds[1], 
+                         ifelse(dat$weight > trim.thresholds[2], trim.thresholds[2], 
+                                dat$weight))
+    
+  }
+  
+  
+  return(dat)
+  
+  
+}
+
+
+
+###########################################################################
+
+### 5) Load secondary data
+
+###########################################################################
+
+load.secondary <- function(path, file_type = '*.tif') {
+  
+  setwd(path)
+  
+  rast.files <- list.files(pattern = file_type)
+  
+  lapply(1:length(rast.files), function(i) {
+    
+    f.string <- substr(rast.files[i], 1, (nchar(rast.files[i])-4))
+    
+    assign(f.string, brick(rast.files[i]), envir = .GlobalEnv)
+    
+  })
+  
+}
