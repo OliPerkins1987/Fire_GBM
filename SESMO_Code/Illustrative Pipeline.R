@@ -189,16 +189,5 @@ Metrics      <- Assess.model(bootstrap = T, dat = All.dat,
 
 
 
-#########################################################
-
-### As a map
-
-#########################################################
-
-preds.frame           <- data.frame(HDI[[25]][], (MA.Synthetic[[25]] * GDP[[25]])[])
-colnames(preds.frame) <- c('HDI', 'Market_influence')
-
-
-
 
 
