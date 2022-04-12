@@ -187,7 +187,8 @@ Metrics      <- Assess.model(bootstrap = T, dat = All.dat,
                              target = 'Fire_development_stage', 
                              overall_target = 'Fire_development_stage')
 
-
-
+#### plot final version                  
+plot(Final.tree)
+text(Final.tree)
 
 
