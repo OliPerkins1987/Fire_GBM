@@ -796,3 +796,55 @@ load.secondary <- function(path, file_type = '*.tif') {
   })
   
 }
+
+
+###################################################################################
+
+### 6) make training data
+
+###################################################################################
+
+make_training_dat <- function(All.dat, prob_key) {
+
+  ### This function uses the above weights to create a weighted sample of the available data
+  
+  NULL.mod       <- All.dat[All.dat$AFT == FALSE, ]
+  Pre.dat        <- All.dat %>% filter(AFT ==TRUE)
+  
+  if(nrow(Pre.dat) > nrow(NULL.mod)) {
+    
+    probs          <- NULL.mod[[prob_key]]
+    NULL.mod       <- rbind(NULL.mod, 
+                            NULL.mod[sample.int(nrow(NULL.mod), prob = probs,
+                                                size = nrow(Pre.dat) - nrow(NULL.mod), replace = T), ])
+    
+  } else {
+    
+    probs          <- Pre.dat[[prob_key]]
+    Pre.dat        <- rbind(Pre.dat, 
+                            Pre.dat[sample.int(nrow(Pre.dat), prob = probs,
+                                               size = nrow(NULL.mod) - nrow(Pre.dat), replace = T), ])
+    
+  }
+  
+  Pre.train.rows <- sample.int(nrow(Pre.dat), size = nrow(Pre.dat)/1.25)
+  NULL.train.rows<- sample.int(nrow(NULL.mod), size = nrow(NULL.mod)/1.25)
+  
+  Pre.train <- Pre.dat[Pre.train.rows, ]
+  NULL.train<- NULL.mod[NULL.train.rows, ]
+  
+  Train.dat <- rbind(NULL.train, Pre.train)
+  Test.dat  <- rbind(NULL.mod[-c(NULL.train.rows), ], 
+                     Pre.dat[-c(Pre.train.rows), ])
+  
+  All.dat <- rbind(Train.dat, Test.dat)
+  
+  assign("Test.dat", Test.dat, envir = .GlobalEnv)
+  assign("Train.dat", Train.dat, envir = .GlobalEnv)
+  assign("All.dat", All.dat, envir = .GlobalEnv)
+  
+  return(NULL)
+  
+}
+
+                         
