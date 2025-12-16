@@ -1,5 +1,5 @@
 # Fire_GBM
-Code for development of a global behavioural model of human fire impacts. Supports paper (Perkins et al., 2021) under submission to Socio-ecological simulation modelling (SESMO). 
+Code for development of a global behavioural model of human fire impacts. Supports paper (Perkins et al., 2022) published in Socio-ecological simulation modelling (SESMO). 
 
 Code in this repository was used to define simple classification tree models to define the distribution of 'land fire systems'. 
 
